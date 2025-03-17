@@ -25,13 +25,13 @@ data Op = OpPlus | OpMin | OpMul | OpDiv | OpLT | OpGT | OpEQ
         | OpOr   | OpAnd | OpMod | OpCons | OpAppend 
   deriving (Show, Eq)
 
-data PrimCall = Nil | ToInt | ToFloat | Show | None | Some | Length | BreakToList | Join | Floor | Not
+data PrimCall = Nil | ToInt | ToFloat | Show | None | Some | Length | BreakToList | Join | Floor | Not | FromSome | Sort
   deriving (Show, Eq, Ord)
 
 primNames :: [(PrimCall, FuncName)]
 primNames = [ (Nil, "nil"), (ToInt, "toInt"), (ToFloat, "toFloat"), (Show, "show")
             , (None, "none"), (Some, "some"), (Length, "length"), (BreakToList, "sequence")
-            , (Join, "join"), (Floor, "floor"), (Not, "not") ]
+            , (Join, "join"), (Floor, "floor"), (Not, "not"), (FromSome, "fromSome") ]
 
 primToName :: Map PrimCall FuncName
 primToName = fromList primNames
@@ -58,6 +58,8 @@ instance Arity PrimCall where
     Join -> 1
     Floor -> 1
     Not -> 1
+    FromSome -> 1
+    Sort -> 1
     
 data Pattern 
   = PVar Var 
@@ -79,7 +81,7 @@ data Term
   | FunCall FuncName
   | PrimCall PrimCall
   | Let Var Term Term 
-  | Match Term Clause 
+  | Match Term [Clause] 
   deriving (Show, Eq)
 
 

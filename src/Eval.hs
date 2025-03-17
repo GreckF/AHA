@@ -9,7 +9,7 @@ import AST
 import qualified Data.Map as M
 import Data.Functor
 import Text.Read (readMaybe)
-import Data.List (intercalate)
+import Data.List (sort)
 import Control.Monad (forM, join)
 
 data Value
@@ -67,7 +67,8 @@ data Err
   | TooManyArg (Either PrimCall FuncDecl) Int Int
   | UnknownVar Var
   | UnknownFun FuncName
-  | Can'tMatch Pattern Value
+  | Can'tMatch [Clause] Value
+  | StrErr String 
 
 instance Show Err where
   show = \case
@@ -83,7 +84,8 @@ instance Show Err where
                       ++ "\n  Actually: " ++ show act
     UnknownVar x -> "(TwoValue a b) variable:  " ++ x
     UnknownFun f -> "(TwoValue a b) function:  " ++ f
-    Can'tMatch p v -> "Can not match value: " ++ show v ++ " with pattern: " ++ show p
+    Can'tMatch c v -> "Can not match value: " ++ show v ++ " with patterns: " ++ show (map (\(Clause p _) -> p) c)
+    StrErr s -> s
 
 
 throwErr :: Err -> IO a
@@ -145,31 +147,39 @@ eval env = \case
     lv <- eval env l
     rv <- eval env r
     evalBiOp op (lv, rv)
-  Match t clause -> do
-    undefined
+  Match t clauses -> do
+    v <- eval env t 
+    match env v clauses
   FunCall fun -> case M.lookup fun (functions env) of
     Just decl -> pure $ VFunCall decl []
     Nothing -> throwErr $ UnknownFun fun
   PrimCall fun -> pure $ VPrimCall fun []
 
-match1 :: Value -> Pattern -> IO [(Var, Value)]
+match :: Env -> Value -> [Clause] -> IO Value 
+match env v cls = go cls where 
+  go [] = throwErr $ Can'tMatch cls v 
+  go (Clause p rhs:rest) = case match1 v p of 
+    Just ctx -> eval (newVars ctx env) rhs 
+    Nothing -> go rest 
+
+match1 :: Value -> Pattern -> Maybe [(Var, Value)]
 match1 v p = case p of
   PVar x -> pure [(x, v)]
   PCon con ps -> case v of
     VCon con' vs
       | con == con' -> matchN vs ps
-    _ -> throwErr $ Can'tMatch p v
+    _ -> Nothing
   PList ps -> case v of
     V_List vs -> matchN vs ps
-    _ -> throwErr $ Can'tMatch p v
+    _ -> Nothing
   PListCons x xs -> case v of
     V_List (xv : xsv) -> do
       this <- match1 xv x
       rest <- match1 (V_List xsv) xs
       pure $ this ++ rest
-    _ -> throwErr $ Can'tMatch p v
+    _ -> Nothing
 
-matchN :: [Value] -> [Pattern] -> IO [(Var, Value)]
+matchN :: [Value] -> [Pattern] -> Maybe [(Var, Value)]
 matchN vs ps = case (vs, ps) of
   ([], []) -> pure []
   (v:vs, p:ps) -> do
@@ -284,3 +294,27 @@ evalPrimCall prim args
       Not -> case head args of
         V_Bool x -> pure $ V_Bool $ not x
         v -> throwErr $ TypeErr1 (V v) "bool"
+      FromSome -> case head args of 
+        VCon CSome [v] -> pure v 
+        v -> throwErr $ StrErr $ "Expecting a Some. got " ++ show v ++ " instead."
+      Sort -> case head args of 
+        V_List [] -> pure $ V_List []
+        V_List (x : xs) -> case x of 
+          V_Str s -> do 
+            ss <- forM xs $ \case 
+              V_Str s' -> pure s' 
+              v -> throwErr $ TypeErr1 (V v) "sring"
+            pure $ V_List $ map V_Str $ sort (s : ss)
+          V_Int s -> do 
+            ss <- forM xs $ \case 
+              V_Int s' -> pure s' 
+              v -> throwErr $ TypeErr1 (V v) "int"
+            pure $ V_List $ map V_Int $ sort (s : ss)
+          V_Float s -> do 
+            ss <- forM xs $ \case 
+              V_Float s' -> pure s' 
+              v -> throwErr $ TypeErr1 (V v) "int"
+            pure $ V_List $ map V_Float $ sort (s : ss)
+          _ -> throwErr $ TypeErr1 (V x) "string or int or float"
+        v -> throwErr $ TypeErr1 (V v) "list"
+      
