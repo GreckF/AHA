@@ -11,6 +11,7 @@ import Data.Functor
 import Text.Read (readMaybe)
 import Data.List (sort)
 import Control.Monad (forM, join)
+import Parser(Op(..))
 
 data Value
   = VLit (Lit Value)
@@ -32,12 +33,6 @@ instance Show Value where
     VCon con args -> "(" ++ unwords (show con : map show args) ++")"
     VLam f -> "function"
     _ -> "Error on arity."
-
-data FuncDecl = FuncDecl
-  { funcName :: FuncName
-  , arguments :: [Var]
-  , funcBody :: Term
-  } deriving Show
 
 instance Arity FuncDecl where
   arity (FuncDecl _ args _) = length args

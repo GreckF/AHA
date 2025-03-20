@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 module AST where
 import Data.Map (Map, fromList)
+import Parser(Op)
 
 data Lit a
   = LitStr String 
@@ -20,10 +21,6 @@ instance Show a => Show (Lit a) where
 
 type Var = String 
 type FuncName = String
-
-data Op = OpPlus | OpMin | OpMul | OpDiv | OpLT | OpGT | OpEQ
-        | OpOr   | OpAnd | OpMod | OpCons | OpAppend 
-  deriving (Show, Eq)
 
 data PrimCall = Nil | ToInt | ToFloat | Show | None | Some | Length | BreakToList | Join | Floor | Not | FromSome | Sort
   deriving (Show, Eq, Ord)
@@ -61,6 +58,12 @@ instance Arity PrimCall where
     FromSome -> 1
     Sort -> 1
     
+data FuncDecl = FuncDecl
+  { funcName :: FuncName
+  , arguments :: [Var]
+  , funcBody :: Term
+  } deriving Show
+
 data Pattern 
   = PVar Var 
   | PCon Constructor [Pattern]
