@@ -37,7 +37,16 @@ nameToPrim :: Map FuncName PrimCall
 nameToPrim = fromList $ map (\(a,b)->(b,a)) primNames
 
 data Constructor = CNone | CSome
-  deriving (Show, Eq) 
+  deriving (Show, Eq, Ord) 
+
+conName :: [(Constructor, FuncName)]
+conName = [ (CNone, "None"), (CSome, "Some") ]
+
+conToName :: Map Constructor FuncName
+conToName = fromList conName
+
+nameToCon :: Map FuncName Constructor
+nameToCon = fromList $ map (\(a,b)->(b,a)) conName
 
 class Arity f where 
   arity :: f -> Int 
