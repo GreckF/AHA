@@ -30,6 +30,9 @@ library
       Token
       AST
       Eval
+      Resolver
+      Interpret
+      CSVParser
   other-modules:
       Paths_plc_coursework
   autogen-modules:

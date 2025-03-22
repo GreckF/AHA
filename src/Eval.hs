@@ -12,6 +12,7 @@ import Text.Read (readMaybe)
 import Data.List (sort)
 import Control.Monad (forM, join)
 import Parser(Op(..))
+import CSVParser
 
 data Value
   = VLit (Lit Value)
@@ -27,12 +28,20 @@ instance Eq Value where
     | otherwise = False
   _ == _ = False
 
-instance Show Value where 
-  show = \case 
-    VLit l -> show l 
+instance Show Value where
+  show = \case
+    VLit l -> showLit l
     VCon con args -> "(" ++ unwords (show con : map show args) ++")"
     VLam f -> "function"
-    _ -> "Error on arity."
+    _ -> "can not show."
+
+showLit = \case
+  LitBool True -> "true"
+  LitBool False -> "false"
+  LitStr str -> show str
+  LitInt n -> show n
+  LitFloat n -> show n
+  LitList ls -> show ls
 
 instance Arity FuncDecl where
   arity (FuncDecl _ args _) = length args
@@ -63,7 +72,7 @@ data Err
   | UnknownVar Var
   | UnknownFun FuncName
   | Can'tMatch [Clause] Value
-  | StrErr String 
+  | StrErr String
 
 instance Show Err where
   show = \case
@@ -77,8 +86,8 @@ instance Show Err where
     TooManyArg f exp act -> "Too many arguments on function: " ++ show f
                       ++ "\n  Expecting: " ++ show exp
                       ++ "\n  Actually: " ++ show act
-    UnknownVar x -> "(TwoValue a b) variable:  " ++ x
-    UnknownFun f -> "(TwoValue a b) function:  " ++ f
+    UnknownVar x -> "unknown variable:  " ++ x
+    UnknownFun f -> "unknown function:  " ++ f
     Can'tMatch c v -> "Can not match value: " ++ show v ++ " with patterns: " ++ show (map (\(Clause p _) -> p) c)
     StrErr s -> s
 
@@ -93,24 +102,6 @@ evalLit env = \case
   LitBool b  -> pure (LitBool b)
   LitFloat f -> pure (LitFloat f)
   LitList ls -> LitList <$> mapM (eval env) ls
-
-showValue :: Value -> IO String
-showValue = \case
-  VLit v -> showLit v
-  VCon con args -> showCon con args
-  v -> throwErr $ TypeErr2 (V v) "any expect function" "function"
-  where
-    showLit = \case
-      LitStr s -> pure s
-      LitInt n -> pure $ show n
-      LitFloat n -> pure $ show n
-      LitBool b -> pure $ show b
-      LitList ls -> do
-        ls' <- mapM showValue ls
-        pure $ show ls'
-    showCon con args = do
-      args' <- mapM showValue args
-      pure $ "(" ++ unwords (show con : args') ++ ")"
 
 eval :: Env -> Term -> IO Value
 eval env = \case
@@ -143,19 +134,47 @@ eval env = \case
     rv <- eval env r
     evalBiOp op (lv, rv)
   Match t clauses -> do
-    v <- eval env t 
+    v <- eval env t
     match env v clauses
   FunCall fun -> case M.lookup fun (functions env) of
     Just decl -> pure $ VFunCall decl []
     Nothing -> throwErr $ UnknownFun fun
   PrimCall fun -> pure $ VPrimCall fun []
+  Forall x t b -> do
+    t' <- eval env t
+    csv <- unquoteCSV t'
+    values <- mapM (mapM (\s -> eval (newVar x (V_Str s) env) b)) csv
+    bools <- forM values $ mapM $ \case
+                V_Bool b -> pure b
+                v -> throwErr $ TypeErr1 (V v) "bool"
+    pure $ V_Bool $ all and bools
+  Exist x t b -> do
+    t' <- eval env t
+    csv <- unquoteCSV t'
+    values <- mapM (mapM (\s -> eval (newVar x (V_Str s) env) b)) csv
+    bools <- forM values $ mapM $ \case
+                V_Bool b -> pure b
+                v -> throwErr $ TypeErr1 (V v) "bool"
+    pure $ V_Bool $ any or bools
+  For x t ix b -> do 
+    t' <- eval env t
+    csv <- unquoteCSV t' 
+    case ix of 
+      [i] -> do 
+        values <- mapM (\(ix, line) -> mapM (\s -> eval (newVar x (V_Str s) $ newVar i (V_Int ix) env) b) line) (zip [0..] csv)
+        pure $ V_List (map V_List values)  
+      [i, j] -> do 
+        values <- forM (zip [0..] csv) $ \(iv, line) -> forM (zip [0..] line) $ \(jv, elem) -> 
+                      eval (newVar x (V_Str elem) $ newVar i (V_Int iv) $ newVar j (V_Int jv) env) b 
+        pure $ V_List (map V_List values)  
+      _ -> throwErr $ StrErr "arity error in for expression."
 
-match :: Env -> Value -> [Clause] -> IO Value 
-match env v cls = go cls where 
-  go [] = throwErr $ Can'tMatch cls v 
-  go (Clause p rhs:rest) = case match1 v p of 
-    Just ctx -> eval (newVars ctx env) rhs 
-    Nothing -> go rest 
+match :: Env -> Value -> [Clause] -> IO Value
+match env v cls = go cls where
+  go [] = throwErr $ Can'tMatch cls v
+  go (Clause p rhs:rest) = case match1 v p of
+    Just ctx -> eval (newVars ctx env) rhs
+    Nothing -> go rest
 
 match1 :: Value -> Pattern -> Maybe [(Var, Value)]
 match1 v p = case p of
@@ -181,7 +200,7 @@ matchN vs ps = case (vs, ps) of
     this <- match1 v p
     rest <- matchN vs ps
     pure $ this ++ rest
-  _ -> error "impossible"
+  _ -> Nothing
 
 pattern V_Int x = (VLit (LitInt x))
 pattern V_Str x = (VLit (LitStr x))
@@ -244,9 +263,13 @@ evalBiOp = \case
     (V_List ls, V_List ls') -> pure $ V_List $ ls ++ ls'
     (V_Str s, V_Str s') -> pure $ V_Str $ s ++ s'
     (a,b) -> throwErr $ TypeErr1 (TwoValue a b) "list or string"
+  OpSeq -> pure . snd
 
 evalFunCall :: M.Map FuncName FuncDecl -> FuncDecl -> [Value] -> IO Value
-evalFunCall env (FuncDecl _ argNames body) args = eval (newVars (zip argNames args) (Env M.empty env)) body
+evalFunCall env f@(FuncDecl _ argNames body) args
+  | length args < arity f = pure $ VFunCall f args
+  | length args > arity f = throwErr $ TooManyArg (Right f) (length args) (arity f)
+  | otherwise = eval (newVars (zip argNames args) (Env M.empty env)) body
 
 evalPrimCall :: PrimCall -> [Value] -> IO Value
 evalPrimCall prim args
@@ -264,9 +287,7 @@ evalPrimCall prim args
           Just n -> pure $ VCon CSome [VLit (LitFloat n)]
           Nothing -> pure $ VCon CNone []
         v -> throwErr $ TypeErr1 (V v) "string"
-      Show -> do
-        s <- showValue $ head args
-        pure $ VLit $ LitStr s
+      Show -> pure $ V_Str $ show $ head args
       None -> pure $ VCon CNone []
       Some -> pure $ VCon CSome [head args]
       BreakToList -> case head args of
@@ -289,27 +310,64 @@ evalPrimCall prim args
       Not -> case head args of
         V_Bool x -> pure $ V_Bool $ not x
         v -> throwErr $ TypeErr1 (V v) "bool"
-      FromSome -> case head args of 
-        VCon CSome [v] -> pure v 
+      FromSome -> case head args of
+        VCon CSome [v] -> pure v
         v -> throwErr $ StrErr $ "Expecting a Some. got " ++ show v ++ " instead."
-      Sort -> case head args of 
+      Sort -> case head args of
         V_List [] -> pure $ V_List []
-        V_List (x : xs) -> case x of 
-          V_Str s -> do 
-            ss <- forM xs $ \case 
-              V_Str s' -> pure s' 
+        V_List (x : xs) -> case x of
+          V_Str s -> do
+            ss <- forM xs $ \case
+              V_Str s' -> pure s'
               v -> throwErr $ TypeErr1 (V v) "sring"
             pure $ V_List $ map V_Str $ sort (s : ss)
-          V_Int s -> do 
-            ss <- forM xs $ \case 
-              V_Int s' -> pure s' 
+          V_Int s -> do
+            ss <- forM xs $ \case
+              V_Int s' -> pure s'
               v -> throwErr $ TypeErr1 (V v) "int"
             pure $ V_List $ map V_Int $ sort (s : ss)
-          V_Float s -> do 
-            ss <- forM xs $ \case 
-              V_Float s' -> pure s' 
+          V_Float s -> do
+            ss <- forM xs $ \case
+              V_Float s' -> pure s'
               v -> throwErr $ TypeErr1 (V v) "int"
             pure $ V_List $ map V_Float $ sort (s : ss)
           _ -> throwErr $ TypeErr1 (V x) "string or int or float"
         v -> throwErr $ TypeErr1 (V v) "list"
-      
+      Print -> print (head args) >> pure unit
+      Load -> case head args of
+        V_Str fp -> do
+          csv_src <- readFile fp
+          case csv %% csv_src of
+            (Just csv_res, "") -> pure $ quoteCSV csv_res
+            _ -> throwErr $ StrErr "error when parsing csv"
+        v -> throwErr $ TypeErr1 (V v) "string"
+      PutStrLn -> case head args of
+        V_Str s -> putStrLn s >> pure unit
+        v -> throwErr $ TypeErr1 (V v) "string"
+      PrintCSV -> do
+        csv <- unquoteCSV (head args)
+        putStr $ ppCSV csv
+        pure unit
+      SortCSV -> do 
+        csv <- unquoteCSV (head args)
+        pure $ quoteCSV $ map sort csv
+unit = VCon CNone []
+
+quoteLine :: [String] -> Value
+quoteLine = V_List . map V_Str
+
+quoteCSV :: CSV -> Value
+quoteCSV = V_List . map quoteLine
+
+unquoteCSV :: Value -> IO CSV
+unquoteCSV (V_List ls) = mapM eachLine ls where
+  eachLine :: Value -> IO [String]
+  eachLine = \case
+    V_List line -> mapM eachCell line
+    v -> throwErr $ TypeErr1 (V v) "csv"
+  eachCell :: Value -> IO String
+  eachCell = \case
+    V_Str s -> pure s
+    v -> pure $ show v
+unquoteCSV v = throwErr $ TypeErr1 (V v) "csv"
+

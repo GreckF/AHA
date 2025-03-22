@@ -1,7 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module AST where
 import Data.Map (Map, fromList)
 import Parser(Op)
+import CSVParser (CSV)
 
 data Lit a
   = LitStr String 
@@ -23,12 +26,15 @@ type Var = String
 type FuncName = String
 
 data PrimCall = Nil | ToInt | ToFloat | Show | None | Some | Length | BreakToList | Join | Floor | Not | FromSome | Sort
+              | Print | Load | PutStrLn | PrintCSV | SortCSV
   deriving (Show, Eq, Ord)
 
 primNames :: [(PrimCall, FuncName)]
 primNames = [ (Nil, "nil"), (ToInt, "toInt"), (ToFloat, "toFloat"), (Show, "show")
             , (None, "none"), (Some, "some"), (Length, "length"), (BreakToList, "sequence")
-            , (Join, "join"), (Floor, "floor"), (Not, "not"), (FromSome, "fromSome") ]
+            , (Join, "join"), (Floor, "floor"), (Not, "not"), (FromSome, "fromSome")
+            , (Print, "print"), (Load, "load"), (PutStrLn, "putStrLn"), (PrintCSV, "printCSV") 
+            , (SortCSV, "sortCSV")]
 
 primToName :: Map PrimCall FuncName
 primToName = fromList primNames
@@ -66,7 +72,17 @@ instance Arity PrimCall where
     Not -> 1
     FromSome -> 1
     Sort -> 1
+    Print -> 1
+    Load -> 1
+    PutStrLn -> 1
+    PrintCSV -> 1
+    SortCSV -> 1
     
+instance Arity CSV {- [[String]] -} where 
+  arity = \case 
+    [] -> 0
+    (x:_) -> length x
+
 data FuncDecl = FuncDecl
   { funcName :: FuncName
   , arguments :: [Var]
@@ -94,6 +110,9 @@ data Term
   | PrimCall PrimCall
   | Let Var Term Term 
   | Match Term [Clause] 
+  | Forall Var Term Term 
+  | Exist Var Term Term 
+  | For Var Term [Var] Term
   deriving (Show, Eq)
 
 

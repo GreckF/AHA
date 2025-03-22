@@ -23,4 +23,6 @@ run fp = do
     Left err -> error err 
     Right env -> do 
       v <- callMain env
-      print v 
+      pure ()
+
+      

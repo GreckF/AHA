@@ -15,6 +15,9 @@ import qualified Token as T
   then      {T.Then}
   else      {T.Else}
   fun       {T.Fun}
+  exist     {T.Exist}
+  forall    {T.Forall}
+  for       {T.For}
   '=>'      {T.FunTo}
   let       {T.Let}
   in        {T.In}
@@ -23,7 +26,6 @@ import qualified Token as T
   '|'       {T.Bar}
   '#'       {T.ConsLead}
   end       {T.End}
-  id        {T.Id $$}
   int       {T.Int $$}
   float     {T.Float $$}
   string    {T.String $$}
@@ -46,25 +48,28 @@ import qualified Token as T
   '>'       {T.Op ">"  }
   '=='      {T.Op "==" }
   '::'      {T.Op "::" }
-
-
+  ';'       {T.Op ";"}
+  '@'       {T.At}
+  ':'       {T.Anno}
+  id        {T.Id $$}
+  
 -- ::
 -- * / % 
 -- + - ++  
 -- < > == 
 -- &&
 -- ||
-%right in
+%right else '=>' in
+%right ';'
 %right ',' 
-%right else 
-%right '=>'
 %left '||'
 %left '&&'
 %nonassoc '<' '>' left '=='
 %left '+' '-' '++'
 %left '*' '/' '%'
 %right '::'
-%nonassoc let fun if match '(' id string true false int float '[' '#'
+%nonassoc ':' '@'
+%nonassoc let fun forall exist for if match '(' id string true false int float '[' '#' 
 %nonassoc APP
 
 %%
@@ -87,6 +92,11 @@ Term
   : let id ':=' Term in Term    {% pure $ Let $2 $4 $6}
   | if Term then Term else Term {% pure $ If $2 $4 $6}
   | fun id '=>' Term            {% pure $ Lam $2 $4}
+
+  | forall id ':' Term  '=>' Term {% pure $ Forall $2 $4 $6}
+  | exist id ':' Term  '=>' Term  {% pure $ Exist $2 $4 $6}
+  | for id ':' Term '@' id ArgList '=>' Term {% pure $ For $2 $4 ($6 : $7) $9}
+
   | match Term with Clauses end {% pure $ Match $2 $4}
   | Term Term %prec APP         {% pure $ App $1 $2}
   | Term '||' Term              {% pure $ makeOp $1 $3 OpOr     }
@@ -101,9 +111,10 @@ Term
   | Term '>'  Term              {% pure $ makeOp $1 $3 OpGT     } 
   | Term '==' Term              {% pure $ makeOp $1 $3 OpEQ     }
   | Term '::' Term              {% pure $ makeOp $1 $3 OpCons   }
-  | id                          {% pure $ Id $1}
+  | Term ';'  Term              {% pure $ makeOp $1 $3 OpSeq    }
   | '(' Term ')'                {% pure $ $2}
   | Lit                         {% pure $ Lit $1}
+  | id                          {% pure $ Id $1}
 
 Lit :: {Lit}
 Lit 
@@ -162,7 +173,7 @@ parse = parseTok . T.alexScanTokens
 parseError tok = Left $ "Parse error in: " ++ show tok ++ "\nExpecting: " -- ++ show exp
 
 data Op = OpPlus | OpMin | OpMul | OpDiv | OpLT | OpGT | OpEQ
-        | OpOr   | OpAnd | OpMod | OpCons | OpAppend 
+        | OpOr   | OpAnd | OpMod | OpCons | OpAppend | OpSeq
   deriving (Show, Eq)
 
 type Var = String
@@ -204,6 +215,11 @@ data Term
   | App Term Term 
   | BiOp Op Term Term
   | Let Var Term Term 
-  | Match Term [Clause] 
+  | Match Term [Clause]
+
+  | Forall Var Term Term 
+  | Exist Var Term Term 
+  | For Var Term [Var] Term
+
   deriving (Show, Eq)
 }

@@ -9,57 +9,27 @@ term ::=
   | `fun` id `=>` term 
   | `let` id `:=` term `in` term 
   | `match` term `with` clause `end`
-  | exp1
+
+  | `forall` id `:` term `=>` term 
+  | `exists` id `:` term `=>` term 
+  | `for` id `:` term `@` id+ `=>` term
+  
+  | `(` term `)`
+  | term op term
+  | id
+  | lit 
+
+op ::=
+  | ::        -- right
+  | * / %     -- left
+  | + - ++    -- left
+  | < > ==    -- nonassoc
+  | &&        -- left
+  | ||        -- left
+  | ;         -- right
 
 clause ::= 
   | (`|` pattern `=>` term)
-
--- ::
--- * / % 
--- + - ++  
--- < > == 
--- &&
--- ||
-
-
-exp1 ::= 
-  | exp1 `||` exp2
-  | exp2
-
-exp2 ::= 
-  | exp2 `&&` exp3
-  | exp3 
-
-exp3 ::=
-  | exp4 `<` exp4
-  | exp4 `>` exp4 
-  | exp3 `==` exp4 
-  | exp4 
-
-exp4 ::= 
-  | exp4 `+` exp5 
-  | exp4 `-` exp5
-  | exp4 `++` exp5 
-  | exp5 
-
-exp5 ::=
-  | exp5 `*` exp6
-  | exp5 `/` exp6 
-  | exp5 `%` exp6
-  | exp6 
-
-exp6 ::= 
-  | exp7 `::` exp6 
-  | exp7 
-
-exp7 ::= 
-  | exp7 ` ` exp8
-  | exp8 
-
-exp8 ::= 
-  | `(` term `)`
-  | id
-  | lit 
 
 lit ::= 
   | integer 

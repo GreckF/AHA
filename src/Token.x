@@ -7,13 +7,14 @@ module Token where
 
 $digit = 0-9            -- digits
 $alpha = [a-zA-Z]       -- alphabetic characters
-@ops = ("||"|"&&"|"+"|"-"|"*"|"/"|"++"|"::"|"%"|"<"|">"|"==")
+@ops = ("||"|"&&"|"+"|"-"|"*"|"/"|"++"|"::"|"%"|"<"|">"|"=="|";")
 
 tokens :-
 
   $white+                        ;
   "--".*                         ;
   def                            {\s -> Def}
+  "@"                            {\s -> At}
   ":="                           {\s -> DefEq}
   if                             {\s -> If}
   then                           {\s -> Then}
@@ -37,8 +38,13 @@ tokens :-
   $digit+\.$digit+               {Float . read}
   @ops                           {Op}
   \|                             {\s -> Bar}
-  \"[^\"]*\"                     {String}  
+  \"[^\"]*\"                     {String . init . tail }  
+  forall                         {\s -> Forall}
+  exist                          {\s -> Exist}
+  for                            {\s -> For}
+  ":"                            {\s -> Anno}
   $alpha [$alpha $digit \_ \']*  {Id}
+  
 
 {
 -- Each action has type :: String -> Token
@@ -58,9 +64,14 @@ data Token
   | ParenL | ParenR
   | BracketL | BracketR 
   | Comma | TTrue | TFalse | ConsLead
+  | Forall
+  | Exist
+  | For
+  | Anno
+  | At
   deriving (Eq, Show)
 
-main = do
-  s <- getContents
-  print (alexScanTokens s)
+-- main = do
+--   s <- getContents
+--   print (alexScanTokens s)
 }

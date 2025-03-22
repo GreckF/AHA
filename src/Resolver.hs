@@ -3,7 +3,7 @@ module Resolver where
 
 import AST as A
 import Parser as P
-import Data.Map as M
+import qualified Data.Map as M
 import Control.Monad (join)
 import Data.List (nub)
 
@@ -52,6 +52,23 @@ resolveTerm ctx@(Ctx funs vars) = \case
     t <- resolveTerm ctx t
     cls <- mapM (resolveClause ctx) cls
     pure $ A.Match t cls
+  P.Forall x t b -> do 
+    t <- resolveTerm ctx t 
+    b <- resolveTerm (ctx {boundedNames = x : boundedNames ctx}) b
+    pure $ A.Forall x t b
+  P.Exist x t b -> do 
+    t <- resolveTerm ctx t 
+    b <- resolveTerm (ctx {boundedNames = x : boundedNames ctx}) b
+    pure $ A.Exist x t b
+  P.For v t vs b -> do 
+    t <- resolveTerm ctx t 
+    b <- resolveTerm (newVars (v : vs) ctx) b
+    pure $ A.For v t vs b
+  
+newVar x ctx = ctx {boundedNames = x : boundedNames ctx}
+
+newVars vs env = foldr newVar env vs
+
 
 resolveClause :: Ctx -> P.Clause -> Either String A.Clause
 resolveClause ctx (P.Clause pat term) = do
@@ -60,28 +77,26 @@ resolveClause ctx (P.Clause pat term) = do
   pure $ A.Clause pat term
 
 resolvePattern :: P.Pattern -> Either String ([String], A.Pattern)
-resolvePattern = go [] where
-  go fv = \case
-    P.PVar x
-      | x `elem` fv -> Left "duplicate variable pattern."
-      | otherwise -> pure (x : fv, A.PVar x)
+resolvePattern = go where
+  go = \case
+    P.PVar x -> pure ([x], A.PVar x)
     P.PCon con ps -> case M.lookup con nameToCon of
         Just con' -> do
-          ls <- mapM (go fv) ps
+          ls <- mapM go ps
           let (fv', ps') = (ls >>= fst, snd <$> ls)
           pure (nub fv', A.PCon con' ps')
         Nothing -> Left $ "unknown constructor: " ++ con
     P.PList ps -> do 
-        ls <- mapM (go fv) ps
+        ls <- mapM go ps
         let (fv', ps') = (ls >>= fst, snd <$> ls)
-        pure (fv ++ fv', A.PList ps')
+        pure (fv', A.PList ps')
     P.PListCons l r -> do 
-      (fv', l') <- go fv l 
-      (fv'', r') <- go fv' l
-      pure (fv'', A.PListCons l' r')  
+      (fvl, l') <- go l 
+      (fvr, r') <- go r
+      pure (fvl ++ fvr, A.PListCons l' r')  
 
 resolveFuncDecl :: Ctx -> P.FuncDecl -> Either String A.FuncDecl
-resolveFuncDecl ctx (P.FuncDecl name args rhs) = resolveTerm ctx rhs >>= pure . A.FuncDecl name args
+resolveFuncDecl ctx (P.FuncDecl name args rhs) = resolveTerm (ctx {boundedNames = args ++ boundedNames ctx}) rhs >>= pure . A.FuncDecl name args
 
 readContext :: P.Program -> Ctx 
 readContext prog = Ctx (go prog) [] where 
