@@ -5,6 +5,7 @@ csv file query language
 
 ```shell
 > stack build
+> stack install .
 > stack exec -- plc-coursework-exe ./Tasks/t5.cql
 ```
 
