@@ -52,7 +52,7 @@ br :: Parse ()
 br = sat (== '\n')
 
 overline :: Parse ()
-overline = void (some (lexeme >> br)) <|> eof
+overline = void (lexeme >> br) <|> (lexeme >> eof)
 
 peekOver :: Parse ()
 peekOver = Parse $ \ s -> case s of  
@@ -71,8 +71,10 @@ cell' = Parse $ \s -> case s of
 cell :: Parse String
 cell = reverse . dropWhile isSpace . reverse . dropWhile isSpace <$> cell'
 
-csv :: Parse CSV
-csv = lexeme >> many line <* overline
+csv :: Int -> Parse CSV
+csv n = do 
+  res <- lexeme >> many line <* overline
+  if res == [[""]] then pure [] else pure $ filter ((== n) . length)res
 
 many' :: Parse a -> Parse [a]
 many' p = 
@@ -80,6 +82,9 @@ many' p =
       xs <- many' p
       pure $ x : xs) <|>
   pure []
+
+emptyline :: Parse [String]
+emptyline = lexeme >> br >> pure []
 
 line :: Parse [String]
 line =

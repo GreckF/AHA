@@ -2,8 +2,11 @@ module Main (
     main
   ) where
 
-import Lib (introMessage)
+import Eval
+import Interpret
+import qualified System.Environment as S
 
 main :: IO ()
-main =
-  putStrLn introMessage
+main = do 
+  [fp] <- S.getArgs
+  run fp

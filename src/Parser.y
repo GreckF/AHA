@@ -51,6 +51,9 @@ import qualified Token as T
   ';'       {T.Op ";"}
   '@'       {T.At}
   ':'       {T.Anno}
+  '{'       {T.BraceL}
+  '}'       {T.BraceR}
+  '<-'      {T.LArrow}
   id        {T.Id $$}
   
 -- ::
@@ -60,6 +63,7 @@ import qualified Token as T
 -- &&
 -- ||
 %right else '=>' in
+%right '<-'
 %right ';'
 %right ',' 
 %left '||'
@@ -69,7 +73,7 @@ import qualified Token as T
 %left '*' '/' '%'
 %right '::'
 %nonassoc ':' '@'
-%nonassoc let fun forall exist for if match '(' id string true false int float '[' '#' 
+%nonassoc let fun forall exist for if match '(' id string true false int float '[' '#' '{'
 %nonassoc APP
 
 %%
@@ -113,8 +117,13 @@ Term
   | Term '::' Term              {% pure $ makeOp $1 $3 OpCons   }
   | Term ';'  Term              {% pure $ makeOp $1 $3 OpSeq    }
   | '(' Term ')'                {% pure $ $2}
+  | '{' Term '|' Binders '}'    {% pure $ ListComp $2 $4}
   | Lit                         {% pure $ Lit $1}
   | id                          {% pure $ Id $1}
+
+Binders 
+  : id '<-' Term                {% pure $ [($1, $3)]}
+  | id '<-' Term ',' Binders    {% pure $ ($1, $3) : $5}
 
 Lit :: {Lit}
 Lit 
@@ -220,6 +229,8 @@ data Term
   | Forall Var Term Term 
   | Exist Var Term Term 
   | For Var Term [Var] Term
+
+  | ListComp Term [(Var, Term)]
 
   deriving (Show, Eq)
 }

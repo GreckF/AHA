@@ -26,7 +26,7 @@ type Var = String
 type FuncName = String
 
 data PrimCall = Nil | ToInt | ToFloat | Show | None | Some | Length | BreakToList | Join | Floor | Not | FromSome | Sort
-              | Print | Load | PutStrLn | PrintCSV | SortCSV
+              | Print | Load | PutStrLn | PrintCSV | SortCSV | RemoveEmpty
   deriving (Show, Eq, Ord)
 
 primNames :: [(PrimCall, FuncName)]
@@ -34,7 +34,7 @@ primNames = [ (Nil, "nil"), (ToInt, "toInt"), (ToFloat, "toFloat"), (Show, "show
             , (None, "none"), (Some, "some"), (Length, "length"), (BreakToList, "sequence")
             , (Join, "join"), (Floor, "floor"), (Not, "not"), (FromSome, "fromSome")
             , (Print, "print"), (Load, "load"), (PutStrLn, "putStrLn"), (PrintCSV, "printCSV") 
-            , (SortCSV, "sortCSV")]
+            , (SortCSV, "sortCSV"), (RemoveEmpty, "removeEmpty")]
 
 primToName :: Map PrimCall FuncName
 primToName = fromList primNames
@@ -73,10 +73,11 @@ instance Arity PrimCall where
     FromSome -> 1
     Sort -> 1
     Print -> 1
-    Load -> 1
+    Load -> 2
     PutStrLn -> 1
     PrintCSV -> 1
     SortCSV -> 1
+    RemoveEmpty -> 1
     
 instance Arity CSV {- [[String]] -} where 
   arity = \case 
@@ -113,6 +114,7 @@ data Term
   | Forall Var Term Term 
   | Exist Var Term Term 
   | For Var Term [Var] Term
+  | ListComp Term [(Var, Term)]
   deriving (Show, Eq)
 
 

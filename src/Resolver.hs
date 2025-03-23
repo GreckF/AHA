@@ -64,6 +64,11 @@ resolveTerm ctx@(Ctx funs vars) = \case
     t <- resolveTerm ctx t 
     b <- resolveTerm (newVars (v : vs) ctx) b
     pure $ A.For v t vs b
+  P.ListComp b ls -> do 
+    let (names, terms) = (fst <$> ls, snd <$> ls)
+    b <- resolveTerm (newVars names ctx) b
+    terms <- mapM (resolveTerm (newVars names ctx) {- THIS IS SIMPLIFIED -}) terms 
+    pure $ A.ListComp b $ zip names terms
   
 newVar x ctx = ctx {boundedNames = x : boundedNames ctx}
 

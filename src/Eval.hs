@@ -33,7 +33,9 @@ instance Show Value where
     VLit l -> showLit l
     VCon con args -> "(" ++ unwords (show con : map show args) ++")"
     VLam f -> "function"
-    _ -> "can not show."
+    VPrimCall f vs -> show f ++ show vs
+    VFunCall f vs -> show f ++ show vs
+
 
 showLit = \case
   LitBool True -> "true"
@@ -137,7 +139,7 @@ eval env = \case
     v <- eval env t
     match env v clauses
   FunCall fun -> case M.lookup fun (functions env) of
-    Just decl -> pure $ VFunCall decl []
+    Just decl -> evalFunCall (functions env) decl []
     Nothing -> throwErr $ UnknownFun fun
   PrimCall fun -> pure $ VPrimCall fun []
   Forall x t b -> do
@@ -168,6 +170,23 @@ eval env = \case
                       eval (newVar x (V_Str elem) $ newVar i (V_Int iv) $ newVar j (V_Int jv) env) b 
         pure $ V_List (map V_List values)  
       _ -> throwErr $ StrErr "arity error in for expression."
+  ListComp b binders -> comprehension env b binders
+
+comprehension :: Env -> Term -> [(Var, Term)] -> IO Value
+comprehension env b [] = do 
+  b <- eval env b 
+  pure $ V_List [b]
+comprehension env b ((x,l) : rest) = do 
+  l <- eval env l   
+  case l of 
+    V_List ls -> do 
+      each <- forM ls $ \v -> do 
+        ls <- comprehension (newVar x v env) b rest
+        case ls of
+          V_List l -> pure l 
+          v -> throwErr $ TypeErr1 (V v) "list"
+      pure $ V_List $ join each
+    v -> throwErr $  TypeErr1 (V v) "list"
 
 match :: Env -> Value -> [Clause] -> IO Value
 match env v cls = go cls where
@@ -334,13 +353,13 @@ evalPrimCall prim args
           _ -> throwErr $ TypeErr1 (V x) "string or int or float"
         v -> throwErr $ TypeErr1 (V v) "list"
       Print -> print (head args) >> pure unit
-      Load -> case head args of
-        V_Str fp -> do
+      Load -> case args of
+        [V_Int n, V_Str fp] -> do
           csv_src <- readFile fp
-          case csv %% csv_src of
+          case csv n %% (csv_src ++ "\n") of
             (Just csv_res, "") -> pure $ quoteCSV csv_res
-            _ -> throwErr $ StrErr "error when parsing csv"
-        v -> throwErr $ TypeErr1 (V v) "string"
+            (_, rest) -> throwErr $ StrErr $ "error when parsing csv : " ++ show rest
+        v -> throwErr $ StrErr $ "expecting int and string in: " ++ show v
       PutStrLn -> case head args of
         V_Str s -> putStrLn s >> pure unit
         v -> throwErr $ TypeErr1 (V v) "string"
@@ -350,7 +369,11 @@ evalPrimCall prim args
         pure unit
       SortCSV -> do 
         csv <- unquoteCSV (head args)
-        pure $ quoteCSV $ map sort csv
+        pure $ quoteCSV $ sort csv
+      RemoveEmpty -> do 
+        csv <- unquoteCSV (head args)
+        pure $ quoteCSV $ filter (/= []) csv
+        
 unit = VCon CNone []
 
 quoteLine :: [String] -> Value

@@ -22,6 +22,7 @@ tokens :-
   fun                            {\s -> Fun}
   "=>"                           {\s -> FunTo}
   "#"                            {\s -> ConsLead}
+  "<-"                           {\s -> LArrow}
   let                            {\s -> Let}
   in                             {\s -> In}
   match                          {\s -> Match}
@@ -33,6 +34,8 @@ tokens :-
   \)                             {\s -> ParenR}
   \[                             {\s -> BracketL}
   \]                             {\s -> BracketR}
+  \{                             {\s -> BraceL}
+  \}                             {\s -> BraceR}
   \,                             {\s -> Comma}
   $digit+                        {Int . read}
   $digit+\.$digit+               {Float . read}
@@ -63,6 +66,8 @@ data Token
   | String String
   | ParenL | ParenR
   | BracketL | BracketR 
+  | BraceL | BraceR
+  | LArrow
   | Comma | TTrue | TFalse | ConsLead
   | Forall
   | Exist
